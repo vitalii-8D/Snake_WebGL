@@ -37,12 +37,13 @@ const createProgram = (gl, vertexShader, fragmentShader) => {
    gl.linkProgram(program)
    gl.validateProgram(program)
 
-   const success = gl.getProgramParameter(program, gl.COMPILE_STATUS)
+   const success = gl.getProgramParameter(program, gl.VALIDATE_STATUS)
    if (!success) {
       console.error('Error validate program', gl.getProgramInfoLog(program))
       gl.deleteProgram(program)
       return false;
    }
    gl.useProgram(program)
+
    return program;
 }

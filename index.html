@@ -8,10 +8,19 @@
 <body>
 <div class="container">
     <canvas id="canvas"></canvas>
+
+    <div id="control">
+        <h5>Size of the playing field:</h5>
+
+        X: <input type="number" id="Grid_X" value="10" min="3" max="30">
+        Y: <input type="number" id="Grid_Y" value="10" min="3" max="30">
+        <input type="button" id="update" name="Update" value="Update"/>
+    </div>
 </div>
 
 <script src="js/glMatrix.js"></script>
 <script src="js/resources.js"></script>
+<script src="js/helpers.js"></script>
 <script src="js/index.js"></script>
 </body>
 </html>

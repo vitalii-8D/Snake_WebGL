@@ -16,6 +16,11 @@ body {
     align-content: center;
 }
 
+#control input {
+    display: block;
+    margin-bottom: 10px;
+}
+
 #canvas {
     display: inline-block;
 }

@@ -15,24 +15,36 @@ const InitWebGL = () => {
       })
 }
 
-let canvas, context, bufferGL, gl, program;
+let canvas, context, bufferGL, gl, program, requestAnimation;
+let goRun = 8;
+// let snakeBody = [0, 0];
+let snake = [];
+snake.push([0, 0]);
+snake.push([0, 2]);
+snake.push([0, 4]);
+let apple = {
+   positionX: 0.0,
+   positionY: 0.0
+}
 
 const StartWebGL = (vertexShaderText, fragmentShaderText) => {
-   // canvas = document.getElementById('canvas')
-   // gl = canvas.getContext('webgl');
+
    canvas = document.getElementById('canvas');
    context = canvas.getContext('2d');
 
    bufferGL = document.createElement('canvas');
    gl = bufferGL.getContext('webgl');
 
+   let button = document.getElementById('update')
+
    if (!gl) {
       alert('Your browser does not support WebGL')
       return false;
    }
 
-   bufferGL.width = 500
-   bufferGL.height = 500
+
+   bufferGL.width = 600
+   bufferGL.height = 600
    gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
    resize();
@@ -45,12 +57,11 @@ const StartWebGL = (vertexShaderText, fragmentShaderText) => {
    let u_Pmatrix = gl.getUniformLocation(program, 'u_Pmatrix');
    let u_Vmatrix = gl.getUniformLocation(program, 'u_Vmatrix');
    let u_Mmatrix = gl.getUniformLocation(program, 'u_Mmatrix');
+   let u_Color = gl.getUniformLocation(program, 'u_Color');
 
    let a_Position = gl.getAttribLocation(program, 'a_Position');
-   let a_Color = gl.getAttribLocation(program, 'a_Color');
 
    gl.enableVertexAttribArray(a_Position)
-   gl.enableVertexAttribArray(a_Color)
 
    let triangle_vertex = [
       -0, -0, -0, 1, 1, 0,
@@ -112,73 +123,133 @@ const StartWebGL = (vertexShaderText, fragmentShaderText) => {
    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, TRIANGLE_FACES)
    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(triangle_face), gl.STATIC_DRAW)
 
-   // ---  create MATRIX ---------
 
-   let PROJMATRIX = mat4.perspective(40, canvas.width / canvas.height, 1, 100)
-   let VIEWMATRIX = mat4.create();
-   let MODELMATRIX = mat4.create();
-
-   mat4.identity(VIEWMATRIX);
-   mat4.identity(MODELMATRIX);
-   mat4.rotateX(MODELMATRIX, 0);
-   mat4.lookAt([0.0, 0.0, 10.0], [0.0, 0.0, 0.0], [0.0, 1.0, 0.0], VIEWMATRIX)
-
+   // ---  Build Game Grid   ---
+   let grid = gridBuild()
+   //----------------
+   bufferUpdate(gl, grid)
+   matrixUpdate(gl)
 
    // --- RENDER ----------
-
    gl.enable(gl.DEPTH_TEST);
    gl.depthFunc(gl.LEQUAL);
    gl.clearDepth(1.0);
 
    let old_time = 0;
+   let speed = 100;
+   let dt = 0;
+   let snakePosition = {
+      x: 0.0,
+      y: 0.0
+   };
 
    let animate = function (time) {
-      let dt = time - old_time;
-      old_time = time;
+      dt = time - old_time;
+      requestAnimation = window.requestAnimationFrame(animate)
 
-      mat4.rotateX(MODELMATRIX, 0.00015 * dt);
-      mat4.rotateY(MODELMATRIX, 0.00015 * dt);
-      mat4.rotateZ(MODELMATRIX, 0.00015 * dt);
+      if (Math.abs(dt) >= speed) {
+         swapSnake(snake)
+         snakePosition = snakeController(gl, snakePosition, goRun)
 
+         snake[0][0] = snakePosition.x
+         snake[0][1] = snakePosition.y
+
+         for (let i = 1; i < snake.length; i++) {
+            if (snake[0][0] == snake[i][0] && snake[0][1] == snake[i][1]) {
+               window.cancelAnimationFrame(requestAnimation)
+            }
+         }
+
+         old_time = time;
+      }
+
+      draw(gl)
+      render();
+
+   }
+
+
+   function draw(gl) {
       gl.clearColor(0.7, 0.7, 0.7, 1.0)
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
 
-      gl.uniformMatrix4fv(u_Pmatrix, false, PROJMATRIX)
-      gl.uniformMatrix4fv(u_Mmatrix, false, MODELMATRIX)
-      gl.uniformMatrix4fv(u_Vmatrix, false, VIEWMATRIX)
+      gl.uniformMatrix4fv(u_Pmatrix, false, gl.PROJMATRIX)
+      gl.uniformMatrix4fv(u_Vmatrix, false, gl.VIEWMATRIX)
+
+      // Draw tail
+      for (let i = 0; i < snake.length; i++) {
+         gl.uniform3f(u_Color, 0.0, 0.0, 1.0)
+
+         mat4.identity(gl.MODELMATRIX_SNAKE)
+         mat4.translate(gl.MODELMATRIX_SNAKE, [snake[i][0] * 2, snake[i][1] * 2, 0.0])
+
+         if (!i) {
+            gl.uniform3f(u_Color, 1.0, 1.0, 0.0)
+            mat4.translate(gl.MODELMATRIX_SNAKE, [0.0, 0.0, 0.001])
+         }
+
+         gl.uniformMatrix4fv(u_Mmatrix, false, gl.MODELMATRIX_SNAKE)
+
+         gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_VERTEX)
+         gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 4 * 6, 0)
+
+         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, TRIANGLE_FACES)
+         gl.drawElements(gl.TRIANGLES, triangle_face.length, gl.UNSIGNED_SHORT, 0)
+         gl.uniform3f(u_Color, 0.9, 0.5, 0.0)
+         gl.drawElements(gl.LINES, triangle_face.length, gl.UNSIGNED_SHORT, 0)
+      }
+
+      apple = eatApple(gl, snake, apple)
+      if (apple.eat) {
+         snake.push([apple.positionX, apple.positionY])
+      }
+
+      // Draw Apple
+      gl.uniform3f(u_Color, 0.8, 0.0, 0.0)
+      mat4.identity(gl.MODELMATRIX_SNAKE)
+      mat4.translate(gl.MODELMATRIX_SNAKE, [apple.positionX * 2, apple.positionY * 2, 0.0])
+
+      gl.uniformMatrix4fv(u_Mmatrix, false, gl.MODELMATRIX_SNAKE)
 
       gl.bindBuffer(gl.ARRAY_BUFFER, TRIANGLE_VERTEX)
-
       gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 4 * 6, 0)
-      gl.vertexAttribPointer(a_Color, 3, gl.FLOAT, false, 4 * 6, 3 * 4)
 
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, TRIANGLE_FACES)
       gl.drawElements(gl.TRIANGLES, triangle_face.length, gl.UNSIGNED_SHORT, 0)
+      gl.uniform3f(u_Color, 0.9, 0.5, 0.0)
+      gl.drawElements(gl.LINES, triangle_face.length, gl.UNSIGNED_SHORT, 0)
+
+      // ---   GRID  ---
+      gl.uniformMatrix4fv(u_Mmatrix, false, gl.MODELMATRIX_GRID)
+      gl.bindBuffer(gl.ARRAY_BUFFER, gl.GRID_VERTEX)
+      gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, 4 * 3, 0)
+
+      gl.uniform3f(u_Color, 0.0, 1.0, 0.0)
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, gl.GRID_FACES)
+      gl.drawElements(gl.LINES, gl.grid.grid_count, gl.UNSIGNED_SHORT, 0)
 
       gl.flush();
-
-
-      render();
-      window.requestAnimationFrame(animate)
    }
 
    window.requestAnimationFrame(time => animate(time))
+
+
+   window.addEventListener('resize', resize);
+   document.addEventListener('keydown', keydownEvent, false);
+   button.addEventListener('click', {handleEvent: updateGame, gl: gl}, false)
 }
 
-window.addEventListener('resize', resize);
+function keydownEvent(e) {
 
-function resize(e) {
-   const windowWidth = document.documentElement.clientWidth;
-   const windowHeight = document.documentElement.clientHeight;
-   const sideSize = windowWidth < windowHeight ? windowWidth : windowHeight;
-   canvas.width = canvas.height = sideSize;
-}
-
-function render() {
-   context.drawImage(
-      gl.canvas,
-      0, 0, gl.canvas.width, gl.canvas.height,
-      0, 0, canvas.width, canvas.height)
+   if (e.keyCode == 38 && goRun != 2) {
+      goRun = 8;
+   } else if (e.keyCode == 40 && goRun != 8) {
+      goRun = 2;
+   } else if (e.keyCode == 37 && goRun != 6) {
+      goRun = 4;
+   } else if (e.keyCode == 39 && goRun != 4) {
+      goRun = 6;
+   } else return false;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
